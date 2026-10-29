@@ -100,6 +100,11 @@ class Limits:
     #: thirty minutes; past this the build is not slow, the dispatcher that was
     #: waiting for it died, and nothing else will ever finish the job.
     max_building: timedelta = timedelta(minutes=40)
+    #: How much one `habs get` may pull onto a laptop. Results live in Azure
+    #: and are readable with the team's link; `habs get` is a convenience, and
+    #: a convenience that quietly moves gigabytes out of the region is one
+    #: nobody meant to use. Over this it says so and points at the link.
+    max_download_mb: float = 25.0
 
     def gpu_seconds_per_team(self) -> float:
         return self.gpu_hours_per_team * 3600.0

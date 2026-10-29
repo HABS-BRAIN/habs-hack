@@ -100,6 +100,24 @@ def _out(args: argparse.Namespace) -> Path | None:
     return Path(args.out) if args.out else None
 
 
+def _is_read_only() -> bool:
+    """True when the only credential here is the results link.
+
+    That link is read and list on one container, which is what a student has
+    on their own machine. Submitting and cancelling write, so they fail -- and
+    they used to fail as a raw AuthorizationPermissionMismatch from Azure,
+    which tells a student nothing about what to do instead.
+    """
+    return bool(os.environ.get("HABS_SAS", "").strip()) and not os.environ.get("HABS_STORE_DIR")
+
+
+def _read_only(action: str) -> int:
+    print(f"habs: your results link is read-only, so it cannot {action}.", file=sys.stderr)
+    print("habs: submitting is a push -- run `git push origin main` and the", file=sys.stderr)
+    print("habs: workflow in your repository submits that commit for you.", file=sys.stderr)
+    return 2
+
+
 def _pack(source: Path) -> Path:
     """The build context: the committed tree, or the directory if it is not a repo.
 
@@ -152,6 +170,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_submit(args: argparse.Namespace) -> int:
+    if _is_read_only():
+        return _read_only("submit")
     store, team = _store(args), _team(args)
     source = Path(args.source)
     if not (source / "process.py").is_file():
@@ -440,6 +460,8 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 
 
 def _cmd_cancel(args: argparse.Namespace) -> int:
+    if _is_read_only():
+        return _read_only("cancel a job")
     store, team = _store(args), _team(args)
     job_id = args.job or _latest(store, team)
     if not job_id:
@@ -450,12 +472,39 @@ def _cmd_cancel(args: argparse.Namespace) -> int:
     return 0
 
 
+def _download_cap(store, team: str) -> float:
+    """Megabytes `habs get` will pull before it stops and says why.
+
+    Published by the platform into the team's own container, so it can be
+    changed for the event without anyone reinstalling anything.
+    """
+    from habs_hack.model import Limits
+
+    try:
+        return float(store.read_limits(team).get("max_download_mb", Limits().max_download_mb))
+    except Exception:  # noqa: BLE001 - a missing or odd file is not a failure
+        return Limits().max_download_mb
+
+
 def _cmd_get(args: argparse.Namespace) -> int:
     """Pull a job's results onto this machine, so they can be looked at."""
     store, team = _store(args), _team(args)
     job_id = args.job or _latest(store, team)
     if not job_id:
         print("habs: no job to download", file=sys.stderr)
+        return 2
+
+    # Checked before anything moves. Results live in Azure and your link opens
+    # them in a file browser; `habs get` is for looking at a few files, not for
+    # moving a dataset onto a laptop.
+    cap = _download_cap(store, team)
+    size_mb = store.outputs_size(team, job_id) / 1e6
+    if size_mb > cap:
+        print(f"habs: {job_id} wrote {size_mb:,.0f} MB and `habs get` stops at "
+              f"{cap:,.0f} MB.", file=sys.stderr)
+        print("habs: open your results link in Azure Storage Explorer and take "
+              "the files you want, or name one job's smaller output with --job.",
+              file=sys.stderr)
         return 2
 
     dest = Path(args.out) / job_id

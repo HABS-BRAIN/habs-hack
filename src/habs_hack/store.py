@@ -77,6 +77,9 @@ RUN_PARTS = ("stdout.txt", "stderr.txt", "platform.txt")
 #: Where the platform's own copies live inside `control`.
 ACTIVE = "active"
 CODE = "code"
+#: Written into each team's own container, so the client can read it without a
+#: role on anything of ours.
+LIMITS = "limits.json"
 USAGE = "usage.json"
 LOCK = "dispatcher.lock"
 
@@ -153,6 +156,9 @@ class JobStore(Protocol):
     def read_log(self, team: str, job_id: str, parts: Sequence[str] = LOG_PARTS) -> str: ...
     def write_log(self, team: str, job_id: str, name: str, text: str) -> None: ...
     def list_outputs(self, team: str, job_id: str) -> list[str]: ...
+    def outputs_size(self, team: str, job_id: str) -> int: ...
+    def read_limits(self, team: str) -> dict[str, Any]: ...
+    def write_limits(self, team: str, limits: dict[str, Any]) -> None: ...
     def fetch_outputs(self, team: str, job_id: str, dest: Path) -> list[Path]: ...
 
     # -- the platform's side --------------------------------------------------
@@ -224,6 +230,19 @@ class LocalStore:
         if not folder.is_dir():
             return []
         return sorted(str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file())
+
+    def outputs_size(self, team: str, job_id: str) -> int:
+        folder = self.root / team / "out" / job_id
+        return sum((folder / n).stat().st_size for n in self.list_outputs(team, job_id))
+
+    def read_limits(self, team: str) -> dict[str, Any]:
+        path = self.root / team / LIMITS
+        return json.loads(path.read_text()) if path.is_file() else {}
+
+    def write_limits(self, team: str, limits: dict[str, Any]) -> None:
+        folder = self.root / team
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / LIMITS).write_text(json.dumps(limits, indent=2))
 
     def fetch_outputs(self, team: str, job_id: str, dest: Path) -> list[Path]:
         folder = self.root / team / "out" / job_id
@@ -490,6 +509,31 @@ class BlobStore:
             target.write_bytes(container.download_blob(f"out/{job_id}/{name}").readall())
             written.append(target)
         return written
+
+    def outputs_size(self, team: str, job_id: str) -> int:
+        """Bytes a job wrote, from the listing -- nothing is downloaded to ask."""
+        return sum(
+            blob.size or 0
+            for blob in self._container(team).list_blobs(
+                name_starts_with=f"out/{job_id}/", include=["metadata"]
+            )
+            if not self._is_dir(blob)
+        )
+
+    def read_limits(self, team: str) -> dict[str, Any]:
+        """The limits the platform published for this team, if any.
+
+        Advisory, and deliberately so: it lands in the team's own container,
+        which the team can write. It exists to stop an accident, not an
+        attacker -- the real controls are the roles on that container.
+        """
+        try:
+            return json.loads(self._container(team).download_blob(LIMITS).readall())
+        except Exception:  # noqa: BLE001 - absent until the team's first job
+            return {}
+
+    def write_limits(self, team: str, limits: dict[str, Any]) -> None:
+        self._container(team).upload_blob(LIMITS, json.dumps(limits, indent=2), overwrite=True)
 
     def list_outputs(self, team: str, job_id: str) -> list[str]:
         prefix = f"out/{job_id}/"
