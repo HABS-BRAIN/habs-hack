@@ -1,0 +1,60 @@
+[project]
+name = "habs-hack"
+version = "0.4.0"
+description = "Compute platform for the HABS Neuro-AI hackathon: per-team images, fair-share GPU queueing, one-file student interface"
+# 3.11, because the CUDA base image students build on ships 3.11 and a
+# stricter floor fails their image build before their code is even seen.
+requires-python = ">=3.11"
+dependencies = []
+
+# Every bound is pinned to the minor rather than left open. The Batch SDK
+# renamed every model between v14 and v15 (TaskAddParameter ->
+# BatchTaskCreateOptions, BatchServiceClient -> BatchClient); an open bound
+# means a rebuild picks that up silently and the backend stops working at
+# submit time, in the middle of the event.
+[project.optional-dependencies]
+# What a team's CI installs: enough to drop a submission and read its own
+# status. No Batch, no registry -- a team has no business holding either.
+storage = [
+  "azure-identity>=1.19,<2",
+  "azure-storage-blob>=12.24,<13",
+]
+# What the dispatcher installs. The dispatcher's *code* comes from this
+# repository, not from a wheel; this extra is only its dependency set.
+platform = [
+  "azure-identity>=1.19,<2",
+  "azure-storage-blob>=12.24,<13",
+  "azure-batch>=15.1,<16",
+  "azure-mgmt-containerregistry>=12.0,<13",
+  # The data plane, separate from the management package above: that one
+  # schedules builds and knows nothing about manifests, and asking "is this
+  # image already there" is what makes most pushes build nothing at all.
+  "azure-containerregistry>=1.2,<2",
+]
+dev = ["pytest>=8.0", "ruff>=0.8", "mne>=1.8"]
+
+# Only the student client is a console script. The dispatcher runs from this
+# repository (`python -m habs_platform.cli`), so there is no wheel of it to
+# publish and no copy of it in the wild.
+[project.scripts]
+habs = "habs_hack.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+# habs_platform is deliberately excluded: the published wheel is a client for
+# one team's own container, not the scheduler, the builder or the Batch
+# backend. Check it with `python -m zipfile -l dist/*.whl` after a build.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["habs_hack*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# habs_platform is not installed by `pip install -e .` -- by design -- so the
+# tests import it from the source tree.
+pythonpath = ["src"]

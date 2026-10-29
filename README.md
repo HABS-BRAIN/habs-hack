@@ -1,41 +1,34 @@
-# habs-hack
+# habs
 
-The `habs` command for the [HABS Neuro-AI Hackathon](https://github.com/HABS-BRAIN/habs-hackathon-template)
-(Paris-Saclay, 2–30 November 2026).
+The command-line client for the HABS Neuro-AI Hackathon. Teams do not install
+this by hand — their workflow does it, from this branch:
 
-Teams do not need to read this repository. It exists so that `pip install` has
-somewhere to point: the wheel is attached to each release.
-
-```bash
-pip install https://github.com/HABS-BRAIN/habs-hack/releases/download/v0.1.0/habs_hack-0.1.0-py3-none-any.whl
+```
+pip install "habs-hack[storage] @ git+https://github.com/HABS-BRAIN/habs-hack@main"
 ```
 
-Your team's repo already installs it in CI. Install it locally too if you want
-to check your work before spending one of the team's GPU turns.
+That is deliberate. Pinning a version would mean editing 35 repositories every
+time the client changes; installing from `main` means a fix reaches every team
+on their next push.
 
 ## What it does
 
 ```
-habs run      run process.py on this machine against the sample in your repo
-habs submit   queue a run on a GPU
-habs status   where your jobs are, and why they are waiting
-habs logs     the whole of stdout and stderr, never a tail
-habs cancel   stop a job
-habs ls       what a job wrote
+habs run      run your process.py on this machine, against the sample data
+habs submit   send the committed tree to be built and run on a GPU
+habs watch    follow a job somebody else queued (the workflow's second half)
+habs status   where your jobs are, and why each one is waiting
+habs logs     the whole log of a job, build included — never a tail
+habs ls/get   list or download what a job wrote
+habs cancel   ask for a running job to be stopped
 ```
 
-Everything but `habs run` acts on your own team's storage container, and needs
-`HABS_TEAM` and `HABS_STORAGE` in the environment — both are set for you as
-variables in your team repo.
+`habs run` needs nothing but Python. Everything else needs either a team
+identity (which only that team's GitHub Actions run can present) or the
+read-only link HABS sends them.
 
-It holds no credentials. In CI the token comes from the OIDC login step; on a
-laptop, from `az login`.
+## What is not here
 
-## Scope
-
-This is the client only. The scheduler, the image builder and the compute
-backend are not here and are not published — the hackathon platform runs those
-itself.
-
-Start at **[the team template](https://github.com/HABS-BRAIN/habs-hackathon-template)**,
-not here.
+The scheduler, the dispatcher, the image builder and the Batch backend are not
+in this package and never will be. This is a client for one team's own
+container; everything that can see every team's work stays on our side.
