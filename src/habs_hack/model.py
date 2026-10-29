@@ -75,16 +75,39 @@ class Job:
 
 @dataclass(frozen=True)
 class Limits:
-    """The rules from the design doc, as numbers.
+    """What the platform refuses to let a team do. Policy, not physics.
 
-    Every one of these exists because of a specific failure: a team filling the
-    pool, a retry loop building an unbounded backlog, a team burning the month's
-    budget in week one, an infinite loop holding a GPU until December.
+    An earlier version of this docstring said these came from a design doc.
+    There is no design doc. Three of them were picked on the first day of the
+    repository by whoever was typing, which is a bad way to decide how much of
+    a shared GPU pool a team may have, so the provenance of each is written
+    down here and the guesses are named as guesses.
+
+    Each stops a specific failure: a team filling the pool, a retry loop
+    building an unbounded backlog, a team burning the month in week one, an
+    infinite loop holding a card until December. That the failures are real
+    does not make the numbers right.
     """
 
+    #: Derived, not configured: the dispatcher asks the pool how many tasks it
+    #: can run (`BatchBackend.pool_capacity`). This default is only the
+    #: fallback for when the pool cannot be read.
     gpu_slots: int = 8
+    #: Reasoned: with four cards and 35 teams, more than one each would let two
+    #: teams hold half the pool. The only number here that follows from the
+    #: shape of the event rather than from taste.
     max_running_per_team: int = 1
+    #: A GUESS. It bounds a retry loop, and any number does that; ten was
+    #: picked on day one and nothing has tested whether it is the right ten.
     max_queued_per_team: int = 10
+    #: A GUESS, and the one that most deserves a decision rather than a
+    #: default, because students are shown it and plan against it.
+    #:
+    #: For scale: four cards over the 29 days of the event is about 2,800
+    #: GPU-hours, so 35 teams at 40 sums to half of what exists. It is
+    #: therefore not rationing a scarce thing -- it is a backstop against one
+    #: team running long jobs all month. A team hitting it would have to run
+    #: forty full-length hours; a team running jobs of minutes never will.
     gpu_hours_per_team: float = 40.0
     #: One hour, not four. Throughput is nodes x (24 / this), and at four
     #: hours four nodes give 35 teams fewer than one job each per day.

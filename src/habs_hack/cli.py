@@ -386,7 +386,7 @@ def _run_summary(store, team: str, job: Job, names: list[str], ok: bool, verdict
     now = datetime.now(UTC)
     charged = job.gpu_seconds(now)
     used = sum(j.gpu_seconds(now) for j in store.team_jobs(team)) / 3600.0
-    budget = Limits().gpu_hours_per_team
+    budget = _budget(store, team)
 
     listed = ", ".join(f"`{n}`" for n in names[:8]) or "none"
     if len(names) > 8:
@@ -422,7 +422,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
         # gets its own line rather than being truncated into a column.
         if job.wait_reason and job.state not in TERMINAL_STATES:
             print(f"    {job.wait_reason}")
-    print(f"\n{used:.1f} of {Limits().gpu_hours_per_team:.0f} GPU-hours used by {team}")
+    print(f"\n{used:.1f} of {_budget(store, team):.0f} GPU-hours used by {team}")
     return 0
 
 
@@ -472,14 +472,26 @@ def _cmd_cancel(args: argparse.Namespace) -> int:
     return 0
 
 
+def _budget(store, team: str) -> float:
+    """The team's GPU-hour budget, as the platform published it.
+
+    Not `Limits().gpu_hours_per_team`: that is whatever this copy of the
+    client was built with, which is the same number as the dispatcher's only
+    by luck. A student planning against a budget deserves the real one.
+    """
+    try:
+        return float(store.read_limits(team).get("gpu_hours_per_team",
+                                                 Limits().gpu_hours_per_team))
+    except Exception:  # noqa: BLE001 - absent before a team's first job
+        return Limits().gpu_hours_per_team
+
+
 def _download_cap(store, team: str) -> float:
     """Megabytes `habs get` will pull before it stops and says why.
 
     Published by the platform into the team's own container, so it can be
     changed for the event without anyone reinstalling anything.
     """
-    from habs_hack.model import Limits
-
     try:
         return float(store.read_limits(team).get("max_download_mb", Limits().max_download_mb))
     except Exception:  # noqa: BLE001 - a missing or odd file is not a failure
