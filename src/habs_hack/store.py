@@ -721,11 +721,14 @@ class BlobStore:
         stop = threading.Event()
 
         def renew() -> None:
+            # Keeps trying. Giving up on the first error was the wrong
+            # instinct: one transient failure would drop the lease sixty
+            # seconds later, in the middle of a build, and let a second
+            # dispatcher in -- which is the exact thing this exists to stop.
+            # There are two more attempts before the lease can expire.
             while not stop.wait(seconds / 3):
-                try:
+                with contextlib.suppress(Exception):
                     lease.renew()
-                except Exception:  # noqa: BLE001 - nothing useful to do here
-                    return
 
         threading.Thread(target=renew, daemon=True).start()
         try:
