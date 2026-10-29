@@ -2,8 +2,9 @@
 name = "habs-hack"
 version = "0.4.0"
 description = "Compute platform for the HABS Neuro-AI hackathon: per-team images, fair-share GPU queueing, one-file student interface"
-# 3.11, because the CUDA base image students build on ships 3.11 and a
-# stricter floor fails their image build before their code is even seen.
+# The image students build on ships 3.12, and CI installs this on 3.12. The
+# floor stays at 3.11 anyway: this is also installed on students' laptops for
+# `habs run`, and refusing one of theirs buys nothing.
 requires-python = ">=3.11"
 dependencies = []
 
